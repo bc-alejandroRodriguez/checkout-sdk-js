@@ -4,28 +4,7 @@ import { NotImplementedError, NotInitializedError, NotInitializedErrorType } fro
 import { PaymentMethodClientUnavailableError } from '../../errors';
 import PaymentStrategyType from '../../payment-strategy-type';
 
-import { ButtonsOptions,
-    FieldsOptions,
-    ParamsForProvider, PayerDetails,
-    PaypalButtonStyleOptions,
-    PaypalCommerceButtons,
-    PaypalCommerceFields,
-    PaypalCommerceHostedFields,
-    PaypalCommerceHostedFieldsApprove,
-    PaypalCommerceHostedFieldsRenderOptions,
-    PaypalCommerceHostedFieldsState,
-    PaypalCommerceHostedFieldsSubmitOptions,
-    PaypalCommerceMessages,
-    PaypalCommerceRequestSender,
-    PaypalCommerceScriptLoader,
-    PaypalCommerceScriptParams,
-    PaypalCommerceSDK,
-    PaypalCommerceSDKFunding,
-    PaypalFieldsStyleOptions,
-    StyleButtonColor,
-    StyleButtonLabel,
-    StyleButtonLayout,
-    StyleButtonShape } from './index';
+import { ButtonsOptions, FieldsOptions, ParamsForProvider, PayerDetails, PaypalButtonStyleOptions, PaypalCommerceButtons, PaypalCommerceFields, PaypalCommerceHostedFields, PaypalCommerceHostedFieldsApprove, PaypalCommerceHostedFieldsRenderOptions, PaypalCommerceHostedFieldsState, PaypalCommerceHostedFieldsSubmitOptions, PaypalCommerceMessages, PaypalCommerceRequestSender, PaypalCommerceScriptLoader, PaypalCommerceScriptParams, PaypalCommerceSDK, PaypalCommerceSDKFunding, PaypalFieldsStyleOptions, StyleButtonColor, StyleButtonLabel, StyleButtonLayout, StyleButtonShape } from './index';
 
 export interface OptionalParamsRenderButtons {
     paramsForProvider?: ParamsForProvider;
@@ -116,13 +95,7 @@ export default class PaypalCommercePaymentProcessor {
         return this._paypalButtons;
     }
 
-    renderFields({
-                     apmFieldsContainer,
-                     fundingKey,
-                     apmFieldsStyles,
-                     fullName,
-                     email,
-                 }: RenderApmFieldsParams): PaypalCommerceFields {
+    renderFields({ apmFieldsContainer, fundingKey, apmFieldsStyles, fullName, email }: RenderApmFieldsParams): PaypalCommerceFields {
         if (!this._paypal || !this._paypal.PaymentFields) {
             throw new PaymentMethodClientUnavailableError();
         }

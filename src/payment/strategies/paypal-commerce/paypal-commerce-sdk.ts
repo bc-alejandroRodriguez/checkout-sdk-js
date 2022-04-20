@@ -62,7 +62,7 @@ export interface ButtonsOptions {
     fundingSource?: string;
     createOrder?(): Promise<string>;
     onApprove?(data: ApproveDataOptions, actions: ApproveActions): void;
-    onShippingChange?(data: any, actions: any): void;
+    onShippingChange?(data: ShippingChangeData, actions: ApproveActions): void;
     onClick?(data: ClickDataOptions, actions: ClickActions): void;
     onCancel?(): void;
     onError?(error: Error): void;
@@ -70,8 +70,8 @@ export interface ButtonsOptions {
 
 export interface ApproveActions {
     order: {
-        capture(): Promise<any>;
-        authorize(): Promise<any>;
+        capture(): Promise<PayerDetails>;
+        authorize(): Promise<PayerDetails>;
         get(): void;
         patch(data: PatchArgument[]): void;
     };
@@ -121,18 +121,18 @@ export interface AvaliableShippingOption {
 }
 
 export interface PayerDetails {
-    payer: {
-        name: {
-            given_name: string;
-            surname: string;
+        payer: {
+            name: {
+                given_name: string;
+                surname: string;
+            };
+            email_address: string;
+            payer_id: string;
+            address: {
+                country_code: string;
+            };
         };
-        email_address: string;
-        payer_id: string;
-        address: {
-            country_code: string;
-        };
-    };
-    purchase_units: PurchaseUnits[];
+        purchase_units: PurchaseUnits[];
 }
 
 export interface ShippingChangeData {
@@ -159,6 +159,10 @@ export interface ShippingAddress {
     postal_code: string;
     country_code: string;
     state: string;
+}
+
+export interface Cache {
+    [key: string]: any;
 }
 
 interface ItemTotal {

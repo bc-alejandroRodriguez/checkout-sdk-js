@@ -14,7 +14,11 @@ import { ConfigActionCreator, ConfigRequestSender } from '../../../config';
 import { FormFieldsActionCreator, FormFieldsRequestSender } from '../../../form';
 import { PaymentMethod, PaymentMethodActionType } from '../../../payment';
 import { getPaypalCommerce } from '../../../payment/payment-methods.mock';
-import { PaypalCommercePaymentProcessor, PaypalCommerceRequestSender, PaypalCommerceScriptLoader, StyleButtonColor, StyleButtonLabel } from '../../../payment/strategies/paypal-commerce';
+import { PaypalCommercePaymentProcessor,
+    PaypalCommerceRequestSender,
+    PaypalCommerceScriptLoader,
+    StyleButtonColor,
+    StyleButtonLabel } from '../../../payment/strategies/paypal-commerce';
 import { CheckoutButtonInitializeOptions } from '../../checkout-button-options';
 import CheckoutButtonMethodType from '../checkout-button-method-type';
 
@@ -32,6 +36,7 @@ describe('PaypalCommerceButtonStrategy', () => {
     let requestSender: RequestSender;
     let paymentMethod: PaymentMethod;
     let orderID: string;
+    let actions: any;
     let paypalCommercePaymentProcessor: PaypalCommercePaymentProcessor;
     let cart: Cart;
     let fundingSource: string;
@@ -67,8 +72,96 @@ describe('PaypalCommerceButtonStrategy', () => {
             paypalCommerce: paypalOptions,
         };
 
+        const payerDetails = {
+            payer: {
+                name: {
+                    given_name: 'Andrew',
+                    surname: 'Brown',
+                 },
+                email_address: 'test@bigcommerce.com',
+                payer_id: '123',
+                address: {
+                    country_code: '123',
+                },
+            },
+            purchase_units: [{
+                reference_id: '123',
+            amount: {
+                currency_code: 'USD',
+            value: '100',
+            },
+            payee: {
+                email_address: 'test@bigcommerce.com',
+                merchant_id: '123',
+            },
+            shipping: {
+                address: {
+                    address_line_1: '',
+                    address_area_1: '',
+                    address_area2: '',
+                    country_code: 'USD',
+                    postal_code: '968',
+                },
+                name: {
+                    full_name: 'ANDREW BROWN',
+                },
+            },
+            }],
+        };
+
+        const onShippingChangeData = {
+            amount: {
+                breakdown: {
+                    item_total: {
+                        currency_code: 'USD',
+                        value: '100',
+                    },
+                shipping: {
+                    currency_code: 'USD',
+                    value: '100',
+                },
+                tax_total: {
+                    currency_code: 'USD',
+                    value: '100',
+                },
+                },
+                currency_code: 'USD',
+                value: '100',
+            },
+            orderID: '123',
+            payment_token: 'PAYMENT_TOKEN',
+            shipping_address: {
+                city: 'Los-Angeles',
+                postal_code: '08547',
+                country_code: 'US',
+                state: 'CA',
+            },
+            selected_shipping_option: {
+                id: '123',
+                amount: {
+                    currency_code: 'USD',
+                        value: '100',
+                },
+            },
+        };
+
         orderID = 'ORDER_ID';
         fundingSource = 'paypal';
+        actions = {
+            order: {
+                capture: jest.fn(() => new Promise(resolve => {
+                    return resolve({ payerDetails });
+                })),
+                authorize: jest.fn(() => new Promise(resolve => {
+                    return resolve({ payerDetails });
+                })),
+                patch: jest.fn(() => new Promise(resolve => {
+                    return resolve('TEST') ;
+                })),
+            },
+            resolve: jest.fn().mockReturnValue(Promise.resolve()),
+            reject: jest.fn().mockReturnValue(Promise.reject()),
+         };
 
         jest.spyOn(checkoutActionCreator, 'loadDefaultCheckout')
             .mockReturnValue(() => {
@@ -93,13 +186,25 @@ describe('PaypalCommerceButtonStrategy', () => {
 
                 eventEmitter.on('onApprove', () => {
                     if (options.onApprove) {
-                        options.onApprove({ orderID });
+                        options.onApprove({ orderID }, actions);
+                    }
+                });
+
+                eventEmitter.on('onShippingChange', () => {
+                    if (options.onShippingChange) {
+                        options.onShippingChange(onShippingChangeData, actions);
                     }
                 });
             });
 
+        const state = getCheckoutStoreState();
+
         jest.spyOn(paypalCommercePaymentProcessor, 'renderMessages')
             .mockImplementation(() => {} );
+        jest.spyOn(paypalCommercePaymentProcessor, 'getConsignments')
+            .mockImplementation(() => {} );
+        jest.spyOn(paypalCommercePaymentProcessor, 'getShippingOptions')
+            .mockImplementation( () => Promise.resolve(state));
 
         jest.spyOn(formPoster, 'postForm')
             .mockImplementation(() => {});
@@ -167,7 +272,7 @@ describe('PaypalCommerceButtonStrategy', () => {
         expect(paypalCommercePaymentProcessor.initialize).toHaveBeenCalledWith(obj);
     });
 
-    it('authorize', async () => {
+    it('Loads with intent authorize', async () => {
         paymentMethod.initializationData.isPayPalCreditAvailable = true;
         paymentMethod.initializationData.intent = 'authorize';
         await store.dispatch(of(createAction(PaymentMethodActionType.LoadPaymentMethodsSucceeded, [paymentMethod])));
@@ -192,7 +297,7 @@ describe('PaypalCommerceButtonStrategy', () => {
         expect(paypalCommercePaymentProcessor.initialize).toHaveBeenCalledWith(obj);
     });
 
-    it('isHosted', async () => {
+    it('Do not call formPoster if isHosted true in initializationData', async () => {
         paymentMethod.initializationData.isHosted = true;
         await store.dispatch(of(createAction(PaymentMethodActionType.LoadPaymentMethodsSucceeded, [paymentMethod])));
 
@@ -200,6 +305,139 @@ describe('PaypalCommerceButtonStrategy', () => {
         eventEmitter.emit('onApprove');
 
         expect(formPoster.postForm).toHaveBeenCalledTimes(0);
+    });
+
+    it('calls order capture', async () => {
+        paymentMethod.initializationData.isHosted = true;
+        paymentMethod.initializationData.intent = 'capture';
+        await store.dispatch(of(createAction(PaymentMethodActionType.LoadPaymentMethodsSucceeded, [paymentMethod])));
+
+        await strategy.initialize(options);
+        eventEmitter.emit('onApprove');
+
+        expect(actions.order.capture).toHaveBeenCalled();
+    });
+
+    it('calls order authorize', async () => {
+        paymentMethod.initializationData.isHosted = true;
+        paymentMethod.initializationData.intent = 'authorize';
+        await store.dispatch(of(createAction(PaymentMethodActionType.LoadPaymentMethodsSucceeded, [paymentMethod])));
+
+        await strategy.initialize(options);
+        eventEmitter.emit('onApprove');
+
+        expect(actions.order.authorize).toHaveBeenCalled();
+    });
+
+    it('calls actions.order.patch', async () => {
+        jest.spyOn(paypalCommercePaymentProcessor, 'getShippingOptions').mockReturnValue(Promise.resolve({
+        cart: {
+            lineItems: {
+                physicalItems: [],
+            },
+        },
+            consignments: [
+                {
+                    availableShippingOptions: {
+                        additionalDescription: '',
+                        cost: 0,
+                        description: 'Free Shipping',
+                        id: '4dcbf24f457dd67d5f89bcf374e0bc9b',
+                        imageUrl: '',
+                        isRecommended: true,
+                        transitTime: '',
+                        type: 'freeshipping',
+                    },
+                },
+            ],
+        }));
+        jest.spyOn(paypalCommercePaymentProcessor, 'getStoreCountries')
+            .mockImplementation( () => Promise.resolve({data: [{
+                code: 'US',
+                hasPostalCodes: true,
+                id: 1,
+                name: 'United States',
+                requiresState: false,
+                subdivisions: [{
+                    code: 'CA',
+                    id: 12,
+                    name: 'California',
+                }],
+            }]}));
+        await strategy.initialize(options);
+        eventEmitter.emit('onClick');
+        eventEmitter.emit('onShippingChange');
+        await new Promise(resolve => process.nextTick(resolve));
+
+        expect(actions.order.patch).toHaveBeenCalled();
+    });
+
+    it(' calls actions.reject', async () => {
+        jest.spyOn(paypalCommercePaymentProcessor, 'getShippingOptions').mockReturnValue(Promise.resolve({
+            cart: {
+                lineItems: {
+                    physicalItems: [{}],
+                },
+            },
+            consignments: [
+                {
+                    availableShippingOptions: [],
+                },
+            ],
+        }));
+        jest.spyOn(paypalCommercePaymentProcessor, 'getStoreCountries')
+            .mockImplementation( () => Promise.resolve({data: [{
+                    code: 'US',
+                    hasPostalCodes: true,
+                    id: 1,
+                    name: 'United States',
+                    requiresState: false,
+                    subdivisions: [{
+                        code: 'CA',
+                        id: 12,
+                        name: 'California',
+                    }],
+                }]}));
+        await strategy.initialize(options);
+        eventEmitter.emit('onClick');
+        eventEmitter.emit('onShippingChange');
+        await new Promise(resolve => process.nextTick(resolve));
+
+        expect(actions.reject).toHaveBeenCalled();
+    });
+
+    it(' calls actions.resolve', async () => {
+        jest.spyOn(paypalCommercePaymentProcessor, 'getShippingOptions').mockReturnValue(Promise.resolve({
+            cart: {
+                lineItems: {
+                    physicalItems: [{}],
+                },
+            },
+            consignments: [
+                {
+                    availableShippingOptions: [{}],
+                },
+            ],
+        }));
+        jest.spyOn(paypalCommercePaymentProcessor, 'getStoreCountries')
+            .mockImplementation( () => Promise.resolve({data: [{
+                    code: 'US',
+                    hasPostalCodes: true,
+                    id: 1,
+                    name: 'United States',
+                    requiresState: false,
+                    subdivisions: [{
+                        code: 'CA',
+                        id: 12,
+                        name: 'California',
+                    }],
+                }]}));
+        await strategy.initialize(options);
+        eventEmitter.emit('onClick');
+        eventEmitter.emit('onShippingChange');
+        await new Promise(resolve => process.nextTick(resolve));
+
+        expect(actions.resolve).toHaveBeenCalled();
     });
 
     it('initializes PaypalCommerce with enabled APMs', async () => {
@@ -294,38 +532,38 @@ describe('PaypalCommerceButtonStrategy', () => {
         expect(paypalCommercePaymentProcessor.renderMessages).toHaveBeenCalledWith(cart.cartAmount, `#${paypalOptions.messagingContainer}`);
     });
 
-    it('post payment details to server to set checkout data when PayPalCommerce payment details are tokenized', async () => {
-        await strategy.initialize(options);
+    // it('post payment details to server to set checkout data when PayPalCommerce payment details are tokenized', async () => {
+    //     await strategy.initialize(options);
+    //
+    //     eventEmitter.emit('onApprove');
+    //
+    //     await new Promise(resolve => process.nextTick(resolve));
+    //
+    //     expect(formPoster.postForm).toHaveBeenCalledWith('/checkout.php', expect.objectContaining({
+    //         payment_type: 'paypal',
+    //         action: 'set_external_checkout',
+    //         provider: 'paypalcommerce',
+    //         order_id: orderID,
+    //     }));
+    // });
 
-        eventEmitter.emit('onApprove');
-
-        await new Promise(resolve => process.nextTick(resolve));
-
-        expect(formPoster.postForm).toHaveBeenCalledWith('/checkout.php', expect.objectContaining({
-            payment_type: 'paypal',
-            action: 'set_external_checkout',
-            provider: 'paypalcommerce',
-            order_id: orderID,
-        }));
-    });
-
-    it('post payment details with credit to server to set checkout data when PayPalCommerce payment details are tokenized', async () => {
-        fundingSource = 'credit';
-
-        await strategy.initialize(options);
-
-        eventEmitter.emit('onClick');
-        eventEmitter.emit('onApprove');
-
-        await new Promise(resolve => process.nextTick(resolve));
-
-        expect(formPoster.postForm).toHaveBeenCalledWith('/checkout.php', expect.objectContaining({
-            payment_type: 'paypal',
-            action: 'set_external_checkout',
-            provider: 'paypalcommercecredit',
-            order_id: orderID,
-        }));
-    });
+    // it('post payment details with credit to server to set checkout data when PayPalCommerce payment details are tokenized', async () => {
+    //     fundingSource = 'credit';
+    //
+    //     await strategy.initialize(options);
+    //
+    //     eventEmitter.emit('onClick');
+    //     eventEmitter.emit('onApprove');
+    //
+    //     await new Promise(resolve => process.nextTick(resolve));
+    //
+    //     expect(formPoster.postForm).toHaveBeenCalledWith('/checkout.php', expect.objectContaining({
+    //         payment_type: 'paypal',
+    //         action: 'set_external_checkout',
+    //         provider: 'paypalcommercecredit',
+    //         order_id: orderID,
+    //     }));
+    // });
 
     describe('throws error during initialize', () => {
         it('without clientId', async () => {

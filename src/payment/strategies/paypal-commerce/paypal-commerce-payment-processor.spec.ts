@@ -7,15 +7,7 @@ import { getCart } from '../../../cart/carts.mock';
 import { NotImplementedError } from '../../../common/error/errors';
 import { PaymentMethodClientUnavailableError } from '../../errors';
 
-import { ButtonsOptions,
-    ParamsRenderHostedFields,
-    PaypalCommerceHostedFields,
-    PaypalCommerceHostedFieldsApprove,
-    PaypalCommercePaymentProcessor,
-    PaypalCommerceRequestSender,
-    PaypalCommerceScriptLoader,
-    PaypalCommerceScriptParams,
-    PaypalCommerceSDK } from './index';
+import { ButtonsOptions, ParamsRenderHostedFields, PaypalCommerceHostedFields, PaypalCommerceHostedFieldsApprove, PaypalCommercePaymentProcessor, PaypalCommerceRequestSender, PaypalCommerceScriptLoader, PaypalCommerceScriptParams, PaypalCommerceSDK } from './index';
 import { getPaypalCommerceMock } from './paypal-commerce.mock';
 
 describe('PaypalCommercePaymentProcessor', () => {
@@ -103,7 +95,7 @@ describe('PaypalCommercePaymentProcessor', () => {
 
                 eventEmitter.on('approve', () => {
                     if (options.onApprove) {
-                        options.onApprove({orderID}, {order: {
+                        options.onApprove({orderID}, { order: {
                                 capture: jest.fn(),
                                 authorize: jest.fn(),
                                 get: jest.fn(),
@@ -314,7 +306,7 @@ describe('PaypalCommercePaymentProcessor', () => {
             }];
 
             const getBillingAddress = paypalCommerceRequestSender.getBillingAddress = jest.fn();
-            await paypalCommercePaymentProcessor.getBillingAddress('1', {payer, purchase_units: purchaseUnits });
+            await paypalCommercePaymentProcessor.getBillingAddress('1', { payer, purchase_units: purchaseUnits });
             expect(getBillingAddress).toHaveBeenCalled();
         });
 

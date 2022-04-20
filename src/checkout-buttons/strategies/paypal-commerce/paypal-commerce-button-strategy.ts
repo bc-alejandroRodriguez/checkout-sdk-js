@@ -1,34 +1,21 @@
 import { FormPoster } from '@bigcommerce/form-poster';
 import { includes } from 'lodash';
 
-import { Cart, CollectedLineItem, LineItem, LineItemMap } from '../../../cart';
+import { Cart, CollectedLineItem, LineItemMap } from '../../../cart';
 import { CheckoutActionCreator, CheckoutStore } from '../../../checkout';
-import { InvalidArgumentError, MissingDataError, MissingDataErrorType } from '../../../common/error/errors';
-import { Country, GetCountryResponse, Region } from '../../../geography';
+import { InvalidArgumentError, MissingDataError, MissingDataErrorType, RequestError } from '../../../common/error/errors';
+import { Country, Region, UnitedStatesCodes , UNITED_STATES_CODES } from '../../../geography';
 import { OrderActionCreator } from '../../../order';
-import { ApproveActions,
-    ApproveDataOptions,
-    AvaliableShippingOption,
-    ButtonsOptions, CheckoutWithBillingAddress,
-    ClickDataOptions,
-    FundingType,
-    PayerDetails,
-    PaypalCommerceInitializationData,
-    PaypalCommercePaymentProcessor,
-    PaypalCommerceScriptParams,
-    ShippingAddress,
-    ShippingChangeData,
-    ShippingOptions } from '../../../payment/strategies/paypal-commerce';
+import { ApproveActions, ApproveDataOptions, AvaliableShippingOption, ButtonsOptions, Cache, CheckoutWithBillingAddress, ClickDataOptions, FundingType, PayerDetails, PaypalCommerceInitializationData, PaypalCommercePaymentProcessor, PaypalCommerceScriptParams, ShippingAddress, ShippingChangeData } from '../../../payment/strategies/paypal-commerce';
 import { CheckoutButtonInitializeOptions } from '../../checkout-button-options';
 import CheckoutButtonStrategy from '../checkout-button-strategy';
 
 export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrategy {
     private _isCredit?: boolean;
-    private _cache?: any;
+    private _cache?: Cache;
     private _submittedShippingAddress?: any;
     private _currentShippingAddress?: any;
     private _shippingOptionId?: string;
-    private _addShipping?: boolean;
     private _intent?: string;
 
     constructor(
@@ -52,7 +39,8 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
         state = await this._store.dispatch(this._checkoutActionCreator.loadDefaultCheckout());
         const cart = state.cart.getCartOrThrow();
         const buttonParams: ButtonsOptions = {
-            onApprove: (data: ApproveDataOptions, actions: ApproveActions) => isHosted ? this._onApproveHandler( data, actions, cart) : this._tokenizePayment(data),
+            onApprove: (data: ApproveDataOptions, actions: ApproveActions) => isHosted ?
+                this._onHostedMethodApprove( data, actions, cart) : this._tokenizePayment(data),
             onClick: data => this._handleClickButtonProvider(data),
             onShippingChange: (data, actions) => this._onShippingChangeHandler(data, actions, cart),
         };
@@ -112,15 +100,13 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
         };
     }
 
-    private async _onApproveHandler(_data: ApproveDataOptions, actions: ApproveActions, cart: Cart) {
-        const order = this._intent === 'capture' ? actions.order.capture : actions.order.authorize;
-
-        return order().then(async (details: PayerDetails) => {
-            if (this._currentShippingAddress) {
-
-                const shippingAddress = this._transformContactToAddress(details, {...this._currentShippingAddress});
+    private async _onHostedMethodApprove(_data: ApproveDataOptions, actions: ApproveActions, cart: Cart) {
+        const orderPlacement = this._intent === 'capture'
+            ? await actions.order.capture()
+            : await actions.order.authorize();
+        if (this._currentShippingAddress) {
+                const shippingAddress = this._transformContactToAddress(orderPlacement, this._currentShippingAddress);
                 const lineItems = this._collectLineItems(cart.lineItems);
-
                 const consignmentPayload = [{
                     shippingAddress,
                     lineItems,
@@ -128,7 +114,6 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
                 try {
                     await this._paypalCommercePaymentProcessor.getConsignments(cart.id, consignmentPayload);
                     const checkoutWithBillingAddress = await this._paypalCommercePaymentProcessor.getBillingAddress(cart.id, shippingAddress) as CheckoutWithBillingAddress;
-
                     if (this._shippingOptionId) {
                         await this._paypalCommercePaymentProcessor.putConsignments(cart.id, checkoutWithBillingAddress.consignments[0].id, { shippingOptionId: this._shippingOptionId });
                     }
@@ -141,10 +126,11 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
                     await this._paypalCommercePaymentProcessor.deleteCart(checkoutWithBillingAddress.cart.id);
                     window.location.assign('/checkout/order-confirmation');
                 } catch (e) {
-                    throw new Error(e);
+                    throw new RequestError(e);
                 }
             }
-        });
+
+        return orderPlacement;
     }
 
     private async _onShippingChangeHandler(data: ShippingChangeData, actions: ApproveActions, cart: Cart) {
@@ -161,7 +147,7 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
         const availableShippingOptions = (checkout as CheckoutWithBillingAddress).consignments[0].availableShippingOptions;
         const shippingRequired = (checkout as CheckoutWithBillingAddress ).cart.lineItems.physicalItems.length > 0;
         if (!shippingRequired) {
-            return actions.order.patch([
+            const patch = await actions.order.patch([
                 {
                     op: 'replace',
                     path: '/purchase_units/@reference_id==\'default\'/amount',
@@ -177,12 +163,13 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
                     },
                 },
             ]);
+
+            return patch;
             // If no shipping options returned, but shipping is required, do not allow to submit such order
         } else if (shippingRequired && availableShippingOptions?.length === 0) {
             return actions.reject();
         } else {
-            const shippingOptions: ShippingOptions[] = [];
-            availableShippingOptions?.forEach((option: AvaliableShippingOption) => {
+            const shippingOptions = availableShippingOptions?.map((option: AvaliableShippingOption) => {
                 let isSelected = false;
                 // Buyer has chosen shipping option on PP list and address the same
                 if (data.selected_shipping_option && this._isAddressSame(
@@ -198,7 +185,8 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
                         isSelected = true;
                     }
                 }
-                shippingOptions.push({
+
+                return {
                     id: option.id,
                     type: 'SHIPPING',
                     label: option.description,
@@ -207,45 +195,44 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
                         value: parseFloat(String(option.cost)).toFixed(2),
                         currency_code: 'USD',
                     },
-                });
+                };
             });
 
-            shippingOptions.sort( (a, b) => {
-                // @ts-ignore
-                return b.selected - a.selected;
+            shippingOptions?.sort( (a, b) => {
+                return (a.selected === b.selected) ? 0 : a ? -1 : 1;
             });
             if (shippingOptions && shippingOptions[0].id) {
                 this._shippingOptionId = shippingOptions[0].id;
             }
-            this._addShipping = false;
-            const shippingOperation = this._addShipping ? 'replace' : 'add';
             this._submittedShippingAddress = this._currentShippingAddress;
 
-            actions.order.patch([
-                {
-                    op: 'replace',
-                    path: '/purchase_units/@reference_id==\'default\'/amount',
-                    value: {
-                        currency_code: 'USD',
-                        value: (parseFloat(String(baseOrderAmount)) + parseFloat(shippingAmount)).toFixed(2),
-                        breakdown: {
-                            item_total: {
-                                currency_code: 'USD',
-                                value: baseOrderAmount,
-                            },
-                            shipping: {
-                                currency_code: 'USD',
-                                value: shippingAmount,
+            if (shippingOptions) {
+                actions.order.patch([
+                    {
+                        op: 'replace',
+                        path: '/purchase_units/@reference_id==\'default\'/amount',
+                        value: {
+                            currency_code: 'USD',
+                            value: (parseFloat(String(baseOrderAmount)) + parseFloat(shippingAmount)).toFixed(2),
+                            breakdown: {
+                                item_total: {
+                                    currency_code: 'USD',
+                                    value: baseOrderAmount,
+                                },
+                                shipping: {
+                                    currency_code: 'USD',
+                                    value: shippingAmount,
+                                },
                             },
                         },
                     },
-                },
-                {
-                    op: shippingOperation,
-                    path: '/purchase_units/@reference_id==\'default\'/shipping/options',
-                    value: shippingOptions,
-                },
-            ]);
+                    {
+                        op: 'add',
+                        path: '/purchase_units/@reference_id==\'default\'/shipping/options',
+                        value: shippingOptions,
+                    },
+                ]);
+            }
 
             return actions.resolve();
         }
@@ -255,42 +242,47 @@ export default class PaypalCommerceButtonStrategy implements CheckoutButtonStrat
         return JSON.stringify(address1) === JSON.stringify(address2);
     }
 
-    private async _transformToAddress(contact: ShippingAddress) {
-        return (this._cache.countries ? Promise.resolve(this._cache.countries) : this._paypalCommercePaymentProcessor.getStoreCountries())
-            .then((response: GetCountryResponse ) => {
-                this._cache.countries = response;
-                const address = {
-                    city: contact.city,
-                    postalCode: contact.postal_code,
-                    countryCode: contact.country_code,
-                };
-                const country = response.data.find((country: Country) => {
-                    return country.code === (contact.country_code || '').toUpperCase();
-                });
-                const state = country && country.subdivisions.find((state: Region) => {
-                    return state.code === (contact.state || '').toUpperCase();
-                });
-
-                if (state) {
-                    address.postalCode = state.code;
-                } else {
-                    throw new Error('Address Error');
-                }
-
-                return address;
-            });
+    private _transformUSCodes(code: string) {
+       return  UNITED_STATES_CODES.find((state: UnitedStatesCodes) => {
+            return state.name === code && state.abbreviation;
+        });
     }
 
-    private _collectLineItems(lineItems: LineItemMap) {
-        const items: CollectedLineItem[] = [];
-        lineItems.physicalItems.forEach((item: LineItem) => {
-            items.push({itemId: item.id, quantity: item.quantity});
+    private async _transformToAddress(contact: ShippingAddress) {
+        const getCountries = await this._paypalCommercePaymentProcessor.getStoreCountries();
+        const countries = this._cache?.countries || getCountries;
+        if (this._cache) {
+            this._cache.countries = countries;
+        }
+        const address = {
+            city: contact.city,
+            postalCode: contact.postal_code,
+            countryCode: contact.country_code,
+        };
+        const addressCountry = countries.data.find((country: Country) => {
+            return country.code === (contact.country_code || '').toUpperCase();
         });
-        lineItems.digitalItems.forEach((item: LineItem) => {
-            items.push({itemId: item.id, quantity: item.quantity});
+        const stateAddress = addressCountry?.subdivisions.find((region: Region) => {
+
+            return region.code === contact.state?.toUpperCase() || this._transformUSCodes(contact.state);
         });
 
-        return items;
+        if (stateAddress) {
+            address.postalCode = stateAddress.code;
+        } else {
+            throw new InvalidArgumentError('Invalid Address');
+        }
+
+        return address;
+    }
+
+    private _collectLineItems(lineItems: LineItemMap): CollectedLineItem[] {
+        const { digitalItems, physicalItems  } = lineItems;
+
+        return [...digitalItems, ...physicalItems].map(({ id, quantity }) => ({
+            itemId: id,
+            quantity,
+        }));
     }
 
     private _getParamsScript(initializationData: PaypalCommerceInitializationData, cart: Cart): PaypalCommerceScriptParams {
