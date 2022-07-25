@@ -104,7 +104,7 @@ describe('KlarnaV2PaymentStrategy', () => {
         jest.spyOn(orderActionCreator, 'submitOrder')
             .mockReturnValue(submitOrderAction);
 
-        jest.spyOn(paymentMethodActionCreator, 'loadPaymentMethod')
+        jest.spyOn(paymentMethodActionCreator, 'loadPaymentMethods')
             .mockReturnValue(loadPaymentMethodAction);
 
         jest.spyOn(remoteCheckoutActionCreator, 'initializePayment')
@@ -159,7 +159,7 @@ describe('KlarnaV2PaymentStrategy', () => {
             strategy.execute(payload);
             expect(klarnaPayments.authorize)
                 .toHaveBeenCalledWith({ payment_method_category: paymentMethod.id }, getKlarnaV2UpdateSessionParamsPhone(), expect.any(Function));
-            expect(paymentMethodActionCreator.loadPaymentMethod).toHaveBeenCalledWith(paymentMethod.gateway);
+            expect(paymentMethodActionCreator.loadPaymentMethods).toHaveBeenCalled();
         });
 
         it('loads widget in EU', async () => {

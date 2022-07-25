@@ -103,7 +103,7 @@ export default class KlarnaV2PaymentStrategy implements PaymentStrategy {
             throw new InvalidArgumentError('Unable to proceed because "payload.payment.gatewayId" argument is not provided.');
         }
 
-        const state = await this._store.dispatch(this._paymentMethodActionCreator.loadPaymentMethod(gatewayId));
+        const state = await this._store.dispatch(this._paymentMethodActionCreator.loadPaymentMethods());
 
         return new Promise<KlarnaLoadResponse>(resolve => {
             const paymentMethod = state.paymentMethods.getPaymentMethodOrThrow(methodId);
