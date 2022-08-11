@@ -36,6 +36,8 @@ export default class MolliePaymentStrategy implements PaymentStrategy {
 
     private _hostedForm?: HostedForm;
 
+    private _unsubscribe?: (() => void);
+
     constructor(
         private _hostedFormFactory: HostedFormFactory,
         private _store: CheckoutStore,
@@ -47,68 +49,36 @@ export default class MolliePaymentStrategy implements PaymentStrategy {
     async initialize(options: PaymentInitializeOptions): Promise<InternalCheckoutSelectors> {
         const { mollie, methodId, gatewayId } = options;
 
-        if (!mollie) {
-            throw new InvalidArgumentError('Unable to initialize payment because "options.mollie" argument is not provided.');
-        }
+        this._unsubscribe = this._store.subscribe(
+            async state => {
+                if (state.paymentStrategies.isInitialized(methodId)) {
 
-        if (!methodId || !gatewayId) {
-            throw new InvalidArgumentError('Unable to initialize payment because "methodId" and/or "gatewayId" argument is not provided.');
-        }
+                    if (methodId && gatewayId && mollie) {
+                        const element = document.getElementById(`${gatewayId}-${methodId}-paragraph`);
 
-        const controllers = document.querySelectorAll('.mollie-components-controller');
-
-        each(controllers, controller => controller.remove());
-
-        const state = this._store.getState();
-        const storeConfig = state.config.getStoreConfig();
-
-        if (!storeConfig) {
-            throw new MissingDataError(MissingDataErrorType.MissingCheckoutConfig);
-        }
-
-        this._initializeOptions = mollie;
-
-        const paymentMethods = state.paymentMethods;
-        const paymentMethod = paymentMethods.getPaymentMethodOrThrow(methodId, gatewayId);
-        const { config: { merchantId, testMode } } = paymentMethod;
-        const { locale } = paymentMethod.initializationData;
-        this._locale = locale;
-
-        if (!merchantId) {
-            throw new InvalidArgumentError('Unable to initialize payment because "merchantId" argument is not provided.');
-        }
-
-        if (this.isCreditCard(methodId) && mollie.form  && this.shouldShowTSVHostedForm(methodId, gatewayId)) {
-            this._hostedForm = await this._mountCardVerificationfields(mollie.form);
-        } else if (this.isCreditCard(methodId)) {
-            this._mollieClient = await this._loadMollieJs(merchantId, storeConfig.storeProfile.storeLanguage, testMode);
-            this._mountElements();
-        }
-
-        if (methodsNotAllowedWhenDigitalOrder.includes(methodId)) {
-            const cart = state.cart.getCartOrThrow();
-            const cartDigitalItems = cart.lineItems.digitalItems;
-
-            if (cartDigitalItems && cartDigitalItems.length > 0) {
-                const { containerId } = this._getInitializeOptions();
-
-                if (containerId) {
-                    const container = document.getElementById(containerId);
-
-                    if (container) {
-                        const paragraph = document.createElement('p') ;
-
-                        if (mollie.unsupportedMethodMessage) {
-                            paragraph.innerText = mollie.unsupportedMethodMessage;
-                            container.appendChild(paragraph);
-                            mollie.disableButton();
+                        if (element) {
+                            element.remove();
                         }
-                    }
-                }
-            }
-        }
 
-        return Promise.resolve(this._store.getState());
+                        mollie.disableButton(false);
+                    }
+
+                    await this._loadPaymentsWidget(options);
+                }
+            },
+            state => {
+                const checkout = state.checkout.getCheckout();
+
+                return checkout && checkout.outstandingBalance;
+            },
+            state => {
+                const checkout = state.checkout.getCheckout();
+
+                return checkout && checkout.coupons;
+            }
+        );
+
+        return this._loadPaymentsWidget(options);
     }
 
     async execute(payload: OrderRequestBody, options?: PaymentRequestOptions): Promise<InternalCheckoutSelectors> {
@@ -142,6 +112,10 @@ export default class MolliePaymentStrategy implements PaymentStrategy {
     }
 
     deinitialize(options?: PaymentRequestOptions): Promise<InternalCheckoutSelectors> {
+        if (this._unsubscribe) {
+            this._unsubscribe();
+        }
+
         if (this._hostedForm) {
             this._hostedForm.detach();
         }
@@ -338,5 +312,73 @@ export default class MolliePaymentStrategy implements PaymentStrategy {
                 this._expiryDateElement.mount(`#${cardExpiryId}`);
             }
         }, 0);
+    }
+
+    private async _loadPaymentsWidget(options: PaymentInitializeOptions){
+        const { mollie, methodId, gatewayId } = options;
+
+        if (!mollie) {
+            throw new InvalidArgumentError('Unable to initialize payment because "options.mollie" argument is not provided.');
+        }
+
+        if (!methodId || !gatewayId) {
+            throw new InvalidArgumentError('Unable to initialize payment because "methodId" and/or "gatewayId" argument is not provided.');
+        }
+
+        const controllers = document.querySelectorAll('.mollie-components-controller');
+
+        each(controllers, controller => controller.remove());
+
+        const state = this._store.getState();
+        const storeConfig = state.config.getStoreConfig();
+
+        if (!storeConfig) {
+            throw new MissingDataError(MissingDataErrorType.MissingCheckoutConfig);
+        }
+
+        this._initializeOptions = mollie;
+
+        const paymentMethods = state.paymentMethods;
+        const paymentMethod = paymentMethods.getPaymentMethodOrThrow(methodId, gatewayId);
+        const { config: { merchantId, testMode } } = paymentMethod;
+        const { locale } = paymentMethod.initializationData;
+        this._locale = locale;
+
+        if (!merchantId) {
+            throw new InvalidArgumentError('Unable to initialize payment because "merchantId" argument is not provided.');
+        }
+
+        if (this.isCreditCard(methodId) && mollie.form  && this.shouldShowTSVHostedForm(methodId, gatewayId)) {
+            this._hostedForm = await this._mountCardVerificationfields(mollie.form);
+        } else if (this.isCreditCard(methodId)) {
+            this._mollieClient = await this._loadMollieJs(merchantId, storeConfig.storeProfile.storeLanguage, testMode);
+            this._mountElements();
+        }
+
+        if (methodsNotAllowedWhenDigitalOrder.includes(methodId)) {
+            const cart = state.cart.getCartOrThrow();
+            const cartDigitalItems = cart.lineItems.digitalItems;
+
+            if (cartDigitalItems && cartDigitalItems.length > 0) {
+                const { containerId } = this._getInitializeOptions();
+
+                if (containerId) {
+                    const container = document.getElementById(containerId);
+
+                    if (container) {
+                        const paragraph = document.createElement('p') ;
+                        paragraph.setAttribute("id",`${options.gatewayId}-${options.methodId}-paragraph`)
+
+                        if (mollie.unsupportedMethodMessage) {
+                            paragraph.innerText = mollie.unsupportedMethodMessage;
+                            container.appendChild(paragraph);
+                            mollie.disableButton(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        return state;
     }
 }
