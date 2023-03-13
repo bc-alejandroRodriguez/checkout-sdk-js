@@ -43,6 +43,7 @@ import {
     GooglePayOrbitalInitializer,
     GooglePayStripeInitializer,
     GooglePayStripeUPEInitializer,
+    GooglePayWorldpayInitializer,
 } from '../payment/strategies/googlepay';
 import { MasterpassScriptLoader } from '../payment/strategies/masterpass';
 import { StripeScriptLoader } from '../payment/strategies/stripe-upe';
@@ -342,6 +343,17 @@ export default function createCustomerStrategyRegistry(
                 store,
                 remoteCheckoutActionCreator,
                 createGooglePayPaymentProcessor(store, new GooglePayStripeUPEInitializer()),
+                formPoster,
+            ),
+    );
+
+    registry.register(
+        'googlepayworldpay',
+        () =>
+            new GooglePayCustomerStrategy(
+                store,
+                remoteCheckoutActionCreator,
+                createGooglePayPaymentProcessor(store, new GooglePayWorldpayInitializer()),
                 formPoster,
             ),
     );

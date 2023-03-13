@@ -182,6 +182,13 @@ export default class GooglePayButtonStrategy implements CheckoutButtonStrategy {
             return options.googlepaystripeupe;
         }
 
+        if (
+            options.methodId === CheckoutButtonMethodType.GOOGLEPAY_WORLDPAY &&
+            options.googlepayworldpay
+        ) {
+            return options.googlepayworldpay;
+        }
+
         throw new InvalidArgumentError();
     }
 
