@@ -974,6 +974,11 @@ declare interface BaseCheckoutButtonInitializeOptions extends CheckoutButtonOpti
      */
     googlepayauthorizenet?: GooglePayButtonInitializeOptions;
     /**
+     * The options that are required to facilitate Worldpay GooglePay. They can be
+     * omitted unless you need to support Worldpay GooglePay.
+     */
+    googlepayworldpay?: GooglePayButtonInitializeOptions;
+    /**
      * The options that are required to facilitate PayPal. They can be omitted
      * unless you need to support Paypal.
      */
@@ -2262,6 +2267,7 @@ declare enum CheckoutButtonMethodType {
     GOOGLEPAY_ORBITAL = "googlepayorbital",
     GOOGLEPAY_STRIPE = "googlepaystripe",
     GOOGLEPAY_STRIPEUPE = "googlepaystripeupe",
+    GOOGLEPAY_WORLDPAY = "googlepayworldpay",
     MASTERPASS = "masterpass",
     PAYPALEXPRESS = "paypalexpress"
 }
