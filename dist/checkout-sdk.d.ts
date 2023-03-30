@@ -975,6 +975,11 @@ declare interface BaseCheckoutButtonInitializeOptions extends CheckoutButtonOpti
      */
     googlepayauthorizenet?: GooglePayButtonInitializeOptions;
     /**
+     * The options that are required to facilitate Worldpay GooglePay. They can be
+     * omitted unless you need to support Worldpay GooglePay.
+     */
+    googlepayworldpayaccess?: GooglePayButtonInitializeOptions;
+    /**
      * The options that are required to facilitate PayPal. They can be omitted
      * unless you need to support Paypal.
      */
@@ -1077,6 +1082,11 @@ declare interface BaseCustomerInitializeOptions extends CustomerRequestOptions {
      * They can be omitted unless you need to support Customer Stripe Upe.
      */
     stripeupe?: StripeUPECustomerInitializeOptions;
+    /**
+     * The options that are required to initialize the GooglePay payment method.
+     * They can be omitted unless you need to support GooglePay.
+     */
+    googlepayworldpayaccess?: GooglePayCustomerInitializeOptions;
 }
 
 declare interface BaseElementOptions {
@@ -1272,6 +1282,11 @@ declare interface BasePaymentInitializeOptions extends PaymentRequestOptions {
      * They can be omitted unless you need to support Worldpay.
      */
     worldpay?: WorldpayAccessPaymentInitializeOptions;
+    /**
+     * The options that are required to initialize the GooglePay Worldpay Access payment method.
+     * They can be omitted unless you need to support GooglePay.
+     */
+    googlepayworldpayaccess?: GooglePayPaymentInitializeOptions;
 }
 
 declare interface BillingAddress extends Address {
@@ -2277,6 +2292,7 @@ declare enum CheckoutButtonMethodType {
     GOOGLEPAY_ORBITAL = "googlepayorbital",
     GOOGLEPAY_STRIPE = "googlepaystripe",
     GOOGLEPAY_STRIPEUPE = "googlepaystripeupe",
+    GOOGLEPAY_WORLDPAYACCESS = "googlepayworldpayaccess",
     MASTERPASS = "masterpass",
     PAYPALEXPRESS = "paypalexpress"
 }
